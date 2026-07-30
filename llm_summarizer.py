@@ -36,9 +36,10 @@ def generate_answer(query: str, results: list[dict]) -> str:
 
     prompt = f"""You are a helpful assistant. Multiple web pages have been retrieved to answer a query.
 Synthesize information across ALL the sources below and give a direct, specific, factual answer.
-Do not say the context does not specify — extract and combine whatever relevant facts are present
-across the sources. Respond in the same language the Query is written in. Reference sources inline
-like [Source 1] where it helps. Keep the answer to 3-6 sentences.
+List ALL distinct services or offerings mentioned, not just a summary. 
+Use bullet points for clarity when multiple items are present.
+Every factual statement must reference at least one source inline like [Source 1].
+Keep the answer concise but complete — 6–10 bullet points or 4–6 sentences maximum.
 
 Query: {query}
 
