@@ -1,0 +1,8 @@
+{
+  "allowed_domains": [
+    "maharashtra.nic.in"
+  ],
+  "blocked_domains": [
+    "youtube.com"
+  ]
+}
