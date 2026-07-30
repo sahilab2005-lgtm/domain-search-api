@@ -1,7 +1,3 @@
-"""
-Minimal configuration for the domain-restricted search API.
-Only the settings actually needed to spawn/talk to the MCP search server.
-"""
 import json
 import os
 import shutil

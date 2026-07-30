@@ -1,17 +1,3 @@
-"""
-Centralized domain allowlist/blocklist config, stored in a plain JSON file
-(config.json) so it can be edited live — via the API, or by hand — without
-restarting the process or touching environment variables.
-
-File shape (config.json):
-{
-    "allowed_domains": ["maharashtra.nic.in"],
-    "blocked_domains": ["youtube.com"]
-}
-
-Writes are atomic (write to a temp file, then os.replace) so a crash or a
-concurrent read mid-write can't leave config.json half-written/corrupt.
-"""
 import json
 import os
 import threading
