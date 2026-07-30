@@ -1,175 +1,172 @@
 # Domain-Restricted Search API
 
-A standalone FastAPI service that searches the web through a custom **MCP
-server**, optionally restricted to a domain allowlist, with a persistent
-blocklist always applied. This is the search-only slice of the larger
-`ddgs_domain_search` project — no UI, no Postgres, no Qdrant, no
-embeddings/LLM. Just: query in → MCP search → filtered results out.
+A FastAPI service that searches the web through an MCP (Model Context Protocol)
+server, optionally restricted to an allowlist of domains, with a persistent
+blocklist always applied. Optionally synthesizes a direct answer from the
+search results using a local LLM (via Ollama).
 
-## How it fits together
+## Features
 
-```
-Client ──POST /query──▶ FastAPI (main.py)
-                              │
-                              ├─ reads allowlist/blocklist from config.json (domain_config.py)
-                              │
-                              └─ search_client.py spawns mcp_server.py over stdio
-                                     and calls its "search" tool
-                                        │
-                                        └─ mcp_server.py queries DuckDuckGo,
-                                           filters by allowed/blocked domains,
-                                           scrapes each result page, returns JSON
-```
+- 🔍 Web search via DuckDuckGo (`ddgs`), run through a local MCP server over stdio
+- ✅ Domain **allowlist** — restrict results to specific domains (e.g. only `.gov.in` sites)
+- 🚫 Domain **blocklist** — always excluded, regardless of the allowlist
+- 🧠 Optional answer synthesis using a local Ollama model — no external LLM API required
+- ⚙️ Fully config-driven — nothing hardcoded (domains, model, timeouts all come from `.env` / `config.json`)
 
-`mcp_server.py` is **not** run separately — `search_client.py` launches it
-as a subprocess (via `MCP_SERVER_COMMAND` / `MCP_SERVER_ARGS`) the first
-time a query needs it, communicating over stdio per the MCP protocol.
+## Prerequisites
 
-## Files
-
-| File               | Purpose                                                            |
-|--------------------|---------------------------------------------------------------------|
-| `main.py`          | FastAPI app (entry point) — `/query`, `/allowlist`, `/blocklist`   |
-| `search_client.py` | Sync wrapper around the async MCP client session                   |
-| `mcp_server.py`    | The MCP server itself — DuckDuckGo search + domain filtering       |
-| `domain_config.py` | Reads/writes `config.json` (allowlist/blocklist), atomic writes    |
-| `llm_summarizer.py`| Optional — local LLM (Ollama) synthesis of one answer from results|
-| `config.py`        | Env var loading for MCP + LLM connection settings                  |
-| `config.json`      | Persisted allowed/blocked domains                                   |
-| `.env.example`     | Copy to `.env` and adjust                                           |
-| `requirements.txt` | Dependencies                                                        |
+- Python 3.10+
+- [Ollama](https://ollama.com) installed locally, **only if** you plan to use answer synthesis
+- Git
 
 ## Setup
 
-```bash
-python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # macOS/Linux
+### 1. Clone the repo
 
-pip install -r requirements.txt
-copy .env.example .env       # Windows
-# cp .env.example .env       # macOS/Linux
+```bash
+git clone https://github.com/sahilab2005-lgtm/domain-search-api.git
+cd domain-search-api
 ```
 
-## Run
+### 2. Create and activate a virtual environment
 
-Either of these works, from any directory (paths to `mcp_server.py` and
-`config.json` are resolved relative to the project folder, not to wherever
-you launch from):
+**Windows (PowerShell):**
+```powershell
+python -m venv venv
+venv\Scripts\Activate.ps1
+```
+
+**macOS / Linux:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Set up environment variables
+
+Copy the example file and adjust as needed:
+
+**Windows (PowerShell):**
+```powershell
+Copy-Item .env.example .env
+```
+
+**macOS / Linux:**
+```bash
+cp .env.example .env
+```
+
+Open `.env` and review the values — the defaults work out of the box for local
+development. See [Environment Variables](#environment-variables) below for what
+each one does.
+
+### 5. (Optional) Set up Ollama for answer synthesis
+
+Only needed if you want `/query` to return a synthesized answer instead of just
+raw search results.
+
+```bash
+ollama pull llama3.2:3b
+ollama serve
+```
+
+Make sure `LLM_MODEL` in `.env` matches the model you pulled.
+
+### 6. Run the API
 
 ```bash
 python main.py
-# or
-uvicorn main:app --reload --port 8000
 ```
 
-Interactive docs: http://127.0.0.1:8000/docs
+or with uvicorn directly:
 
-## Endpoints
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
 
-### `POST /query` — run a search
+The API will be live at `http://localhost:8000`. Interactive docs are auto-generated
+at `http://localhost:8000/docs`.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `MCP_ENABLED` | `true` | Whether MCP-backed search is enabled |
+| `MCP_SERVER_COMMAND` | `python` | Command used to launch the MCP server subprocess |
+| `MCP_SERVER_ARGS` | `["mcp_server.py"]` | Args passed to the MCP server (JSON list) |
+| `MCP_SERVER_ENV` | `{}` | Extra env vars for the MCP server subprocess (JSON object) |
+| `MCP_SEARCH_TOOL_NAME` | `search` | Name of the tool exposed by `mcp_server.py` |
+| `MCP_TIMEOUT_SECONDS` | `25` | Timeout for MCP calls |
+| `MAX_RESULTS_DEFAULT` | `5` | Default number of results per query |
+| `CORS_ORIGINS` | `*` | Comma-separated list of allowed browser origins |
+| `DOMAIN_CONFIG_PATH` | `config.json` | Where the allow/block list is stored |
+| `LLM_MODEL` | `llama3.2:3b` | Ollama model used for answer synthesis |
+| `LLM_NUM_CTX` | `0` | Context window override for Ollama (`0` = model default) |
+
+## API Reference
+
+### `GET /health`
+Health check. Returns `{"status": "ok", "mcp_enabled": true}`.
+
+### `POST /query`
+Run a search, optionally domain-restricted and/or synthesized into an answer.
 
 ```json
 {
-  "query": "MahaAgri-AI objectives",
+  "query": "renewable energy policy",
   "use_allowlist": true,
   "max_results": 5,
   "synthesize_answer": false
 }
 ```
 
-- `use_allowlist: true` → search is restricted to domains in the allowlist
-  (`config.json` → `allowed_domains`). Returns HTTP 422 if the allowlist is
-  empty.
-- `use_allowlist: false` → open web search. The **blocklist still applies**
-  either way — it's a hard exclusion, not a toggle.
-- `synthesize_answer: true` → also generates one synthesized answer from
-  the results using a local LLM via Ollama (see `llm_summarizer.py`). Off
-  by default. If Ollama isn't running or the model isn't pulled, the raw
-  `results` still come back — `answer` is `null` and `answer_error`
-  explains why.
+- `use_allowlist: true` requires at least one domain in the allowlist (add via `POST /allowlist`), otherwise the request returns a 422.
+- `use_allowlist: false` runs an open, unrestricted web search.
+- `synthesize_answer: true` fails soft — if Ollama isn't running or the model isn't pulled, you still get raw results back, with `answer: null` and an `answer_error` explaining why.
 
-Example:
+### Allowlist
 
-```bash
-curl -X POST http://127.0.0.1:8000/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "MahaAgri-AI objectives", "use_allowlist": true}'
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/allowlist` | List allowed domains |
+| `POST` | `/allowlist` | Add a domain: `{"domain": "example.gov.in"}` |
+| `DELETE` | `/allowlist/{domain}` | Remove a domain |
+
+### Blocklist
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/blocklist` | List blocked domains |
+| `POST` | `/blocklist` | Add a domain: `{"domain": "spam-site.com"}` |
+| `DELETE` | `/blocklist/{domain}` | Remove a domain |
+
+A blocked domain is always excluded, even if it would otherwise match the allowlist.
+
+## Project Structure
+
 ```
-
-Response shape:
-
-```json
-{
-  "query": "MahaAgri-AI objectives",
-  "use_allowlist": true,
-  "allowed_domains": ["maharashtra.nic.in"],
-  "blocked_domains": ["youtube.com"],
-  "result_count": 3,
-  "results": [
-    {"title": "...", "url": "https://maharashtra.nic.in/...", "content": "..."}
-  ]
-}
+.
+├── main.py              # FastAPI app and route definitions
+├── config.py            # Loads and validates environment variables
+├── domain_config.py     # Allowlist/blocklist read/write (backed by config.json)
+├── search_client.py      # Spawns and talks to the MCP server over stdio
+├── mcp_server.py         # MCP server exposing the `search` tool (DuckDuckGo + scraping)
+├── llm_summarizer.py     # Optional Ollama-based answer synthesis
+├── config.json           # Persisted allowlist/blocklist state
+├── requirements.txt
+├── .env.example          # Template — copy to .env and fill in
+└── .gitignore
 ```
-
-With `"synthesize_answer": true`, the response also includes:
-
-```json
-{
-  "answer": "MahaAgri-AI is a sovereign, on-premises AI platform developed by NIC Maharashtra... [Source 2]",
-  "answer_error": null
-}
-```
-
-### Allowlist / Blocklist management
-
-```bash
-curl http://127.0.0.1:8000/allowlist
-curl -X POST http://127.0.0.1:8000/allowlist -H "Content-Type: application/json" -d '{"domain": "gov.in"}'
-curl -X DELETE http://127.0.0.1:8000/allowlist/gov.in
-
-curl http://127.0.0.1:8000/blocklist
-curl -X POST http://127.0.0.1:8000/blocklist -H "Content-Type: application/json" -d '{"domain": "youtube.com"}'
-curl -X DELETE http://127.0.0.1:8000/blocklist/youtube.com
-```
-
-Your existing Streamlit UI's "Internet allowlist" sidebar panel and the
-"Domain search / Open web search" radio button map directly onto these
-endpoints — `use_allowlist` in `/query` is the same toggle as that radio.
-
-## Optional: local LLM answer synthesis
-
-`llm_summarizer.py` is a separate module that turns the raw search results
-into one synthesized answer, using a locally running [Ollama](https://ollama.com)
-model. It's off by default and completely optional — the search endpoint
-works fully without it, so if you (or the people reviewing this) already
-have your own LLM step, you can ignore or delete this file.
-
-To use it:
-
-```bash
-# 1. Install and start Ollama, then pull a model:
-ollama pull llama3.1
-
-# 2. Install the optional dependency:
-pip install ollama
-
-# 3. Set LLM_MODEL in .env if you're using a different model name.
-
-# 4. Send synthesize_answer: true on /query:
-curl -X POST http://127.0.0.1:8000/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "MahaAgri-AI objectives", "use_allowlist": true, "synthesize_answer": true}'
-```
-
-If Ollama isn't running or the model isn't pulled, the request doesn't
-fail — you still get `results`, with `answer: null` and an `answer_error`
-explaining what went wrong.
 
 ## Notes
 
-- No LLM/answer-synthesis step is required by default, since the brief was
-  "search only" — `/query` returns raw scraped results (title, url,
-  content) unless `synthesize_answer: true` is set.
-- `config.json` writes are atomic (temp file + `os.replace`), so concurrent
-  requests updating the allowlist won't corrupt it.
+- The allowlist is treated as a security boundary: if a domain-restricted query
+  returns no matches, it does **not** silently fall back to an open web search.
+- Never commit your real `.env` — it's already excluded via `.gitignore`. Use
+  `.env.example` as the reference for what variables are needed.
