@@ -35,11 +35,11 @@ def generate_answer(query: str, results: list[dict]) -> str:
     context = _build_context(results)
 
     prompt = f"""You are a helpful assistant. Multiple web pages have been retrieved to answer a query.
-Synthesize information across ALL the sources below and give a direct, specific, factual answer.
-List ALL distinct services or offerings mentioned, not just a summary. 
-Use bullet points for clarity when multiple items are present.
+Carefully synthesize information across ALL the sources below and provide a direct, factual answer.
+Identify and combine all distinct points relevant to the query — do not skip or summarize vaguely.
+Use bullet points when listing multiple items, or short paragraphs when explaining concepts.
 Every factual statement must reference at least one source inline like [Source 1].
-Keep the answer concise but complete — 6–10 bullet points or 4–6 sentences maximum.
+Keep the answer concise but complete — aim for 6–10 bullet points or 4–6 sentences maximum.
 
 Query: {query}
 
