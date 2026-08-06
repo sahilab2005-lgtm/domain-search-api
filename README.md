@@ -3,7 +3,7 @@
 A FastAPI service that searches the web through an MCP (Model Context Protocol)
 server, optionally restricted to an allowlist of domains, with a persistent
 blocklist always applied. Optionally synthesizes a direct answer from the
-search results using a local LLM (via Ollama).
+search results using a local LLM (via hugging face/Ollama).
 
 ## Features
 
