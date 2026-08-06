@@ -140,5 +140,5 @@ def search(
 
 
 if __name__ == "__main__":
-    print("MCP search server is running (stdio transport)…")
+    print("MCP search server is running…")
     mcp.run(transport="stdio")
